@@ -5058,6 +5058,48 @@ class Product extends CommonObject
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
+	 *  Return stock movement statistics for the product (qty variation, number of movements or amount)
+	 *
+	 * @param	int		$socid					Unused, kept for signature consistency with other get_nb_* methods
+	 * @param	string	$mode					'byunit'=net qty variation, 'bynumber'=nb of movements, 'byamount'=amount
+	 * @param	int		$filteronproducttype	0=To filter on product only, 1=To filter on services only
+	 * @param	int		$year					Year (0=last 12 month, -1=all years)
+	 * @param	string	$morefilter				More sql filters (must use alias d.fk_product)
+	 * @return	array<int<0,11>,array<int,int|float>>|int<-1,-1>	Return integer <0 if KO, result[month]=array(valuex,valuey) where month is 0 to 11
+	 */
+	public function get_nb_stockmovement($socid, $mode, $filteronproducttype = -1, $year = 0, $morefilter = '')
+	{
+		// phpcs:enable
+
+		$sql = "SELECT sum(d.value) as qty, date_format(d.datem, '%Y%m')";
+		if ($mode == 'bynumber') {
+			$sql .= ", count(DISTINCT d.rowid)";
+		}
+		$sql .= ", sum(ABS(d.value) * ".$this->db->ifsql('d.price IS NULL', '0', 'd.price').") as total_ht";
+		$sql .= " FROM ".$this->db->prefix()."stock_mouvement as d";
+		$sql .= ", ".$this->db->prefix()."entrepot as e";
+		if ($filteronproducttype >= 0) {
+			$sql .= ", ".$this->db->prefix()."product as p";
+		}
+		$sql .= " WHERE d.fk_entrepot = e.rowid";
+		$sql .= " AND e.entity IN (".getEntity('stock').")";
+		if ($this->id > 0) {
+			$sql .= " AND d.fk_product = ".((int) $this->id);
+		} else {
+			$sql .= " AND d.fk_product > 0";
+		}
+		if ($filteronproducttype >= 0) {
+			$sql .= " AND p.rowid = d.fk_product AND p.fk_product_type = ".((int) $filteronproducttype);
+		}
+		$sql .= $morefilter;
+		$sql .= " GROUP BY date_format(d.datem,'%Y%m')";
+		$sql .= " ORDER BY date_format(d.datem,'%Y%m') DESC";
+
+		return $this->_get_stats($sql, $mode, $year);
+	}
+
+	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
+	/**
 	 *  Link a product/service to a parent product/service
 	 *
 	 * @param  int $id_pere Id of parent product/service

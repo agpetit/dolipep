@@ -448,6 +448,13 @@ if ($result || !($id > 0)) {
 			'label' => $langs->transnoentitiesnoconv($arrayforlabel[$mode]."Mos"));
 	}
 
+	if (isModEnabled('stock')) {
+		$langs->load("stocks");
+		$graphfiles['stock'] = array('modulepart' => 'productstats_stock',
+			'file' => $object->id.'/stock12m'.((string) $type != '' ? '_type'.$type : '').'_'.$mode.($search_year > 0 ? '_year'.$search_year : '').'.png',
+			'label' => $langs->transnoentitiesnoconv($arrayforlabel[$mode], $langs->transnoentitiesnoconv("StockMovements")));
+	}
+
 	$px = new DolGraph();
 
 	if (!$error && count($graphfiles) > 0) {
@@ -497,6 +504,9 @@ if ($result || !($id > 0)) {
 					}
 					if ($key == 'mrp') {
 						$graph_data = $object->get_nb_mos($socid, $mode, ((string) $type != '' ? $type : -1), $search_year, $morefilters);
+					}
+					if ($key == 'stock') {
+						$graph_data = $object->get_nb_stockmovement($socid, $mode, ((string) $type != '' ? $type : -1), $search_year, $morefilters);
 					}
 
 					// TODO Save cachefile $graphfiles[$key]['file']
@@ -555,6 +565,9 @@ if ($result || !($id > 0)) {
 				continue;
 			}
 			if ($key == 'mrp' && !$user->hasRight('mrp', 'read')) {
+				continue;
+			}
+			if ($key == 'stock' && !$user->hasRight('stock', 'mouvement', 'lire')) {
 				continue;
 			}
 
