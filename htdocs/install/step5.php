@@ -149,8 +149,8 @@ if (@file_exists($forcedfile)) {
 $force_install_lockinstall = (int) (!empty($force_install_lockinstall) ? $force_install_lockinstall : (GETPOST('installlock', 'aZ09') ? GETPOST('installlock', 'aZ09') : (empty($argv[8]) ? '' : $argv[8])));
 
 
-// Case the password was in forced mode
-if (@$force_install_noedit == 2 && isset($force_install_dolibarrpassword)) {
+// Case the password was in forced mode (ignore empty forced value so interactive install still works)
+if (@$force_install_noedit == 2 && !empty($force_install_dolibarrpassword)) {
 	$pass = $force_install_dolibarrpassword;
 	$pass_verif = $force_install_dolibarrpassword;
 }
