@@ -5058,20 +5058,21 @@ class Product extends CommonObject
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
-	 *  Return stock movement statistics for the product (qty variation, number of movements or amount)
+	 *  Return stock movement statistics for the product by week (qty variation, number of movements or amount)
 	 *
 	 * @param	int		$socid					Unused, kept for signature consistency with other get_nb_* methods
 	 * @param	string	$mode					'byunit'=net qty variation, 'bynumber'=nb of movements, 'byamount'=amount
 	 * @param	int		$filteronproducttype	0=To filter on product only, 1=To filter on services only
-	 * @param	int		$year					Year (0=last 12 month, -1=all years)
+	 * @param	int		$year					Unused for the window (always last 52 weeks); -1=aggregate by week number only
 	 * @param	string	$morefilter				More sql filters (must use alias d.fk_product)
-	 * @return	array<int<0,11>,array<int,int|float>>|int<-1,-1>	Return integer <0 if KO, result[month]=array(valuex,valuey) where month is 0 to 11
+	 * @return	array<int<0,51>,array<int,int|float>>|int<-1,-1>	Return integer <0 if KO, result[week]=array(label,value) for 52 weeks
 	 */
 	public function get_nb_stockmovement($socid, $mode, $filteronproducttype = -1, $year = 0, $morefilter = '')
 	{
 		// phpcs:enable
 
-		$sql = "SELECT sum(d.value) as qty, date_format(d.datem, '%Y%m')";
+		// YEARWEEK mode 3 = ISO week (Monday), same as PHP date('oW')
+		$sql = "SELECT sum(d.value) as qty, YEARWEEK(d.datem, 3)";
 		if ($mode == 'bynumber') {
 			$sql .= ", count(DISTINCT d.rowid)";
 		}
@@ -5092,10 +5093,61 @@ class Product extends CommonObject
 			$sql .= " AND p.rowid = d.fk_product AND p.fk_product_type = ".((int) $filteronproducttype);
 		}
 		$sql .= $morefilter;
-		$sql .= " GROUP BY date_format(d.datem,'%Y%m')";
-		$sql .= " ORDER BY date_format(d.datem,'%Y%m') DESC";
+		$sql .= " GROUP BY YEARWEEK(d.datem, 3)";
+		$sql .= " ORDER BY YEARWEEK(d.datem, 3) DESC";
 
-		return $this->_get_stats($sql, $mode, $year);
+		$tab = array();
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			$num = $this->db->num_rows($resql);
+			$i = 0;
+			while ($i < $num) {
+				$arr = $this->db->fetch_array($resql);
+				if (is_array($arr)) {
+					$keyfortab = (string) $arr[1];
+					if ($year == -1) {
+						// Keep week number only (last 2 digits of YEARWEEK)
+						$keyfortab = substr($keyfortab, -2);
+					}
+
+					if ($mode == 'byunit') {
+						$tab[$keyfortab] = (empty($tab[$keyfortab]) ? 0 : $tab[$keyfortab]) + $arr[0];
+					} elseif ($mode == 'bynumber') {
+						$tab[$keyfortab] = (empty($tab[$keyfortab]) ? 0 : $tab[$keyfortab]) + $arr[2];
+					} elseif ($mode == 'byamount') {
+						$tab[$keyfortab] = (empty($tab[$keyfortab]) ? 0 : $tab[$keyfortab]) + $arr[2];
+					} else {
+						return -1;
+					}
+				}
+				$i++;
+			}
+		} else {
+			$this->error = $this->db->error().' sql='.$sql;
+			return -1;
+		}
+
+		// Rolling window: last 52 weeks from now
+		$tmpend = dol_now();
+		$nbweeks = 52;
+
+		$result = array();
+		for ($j = 0; $j < $nbweeks; $j++) {
+			// PHP date('oW') matches MySQL YEARWEEK(datem, 3)
+			$weekkey = date('oW', $tmpend); // e.g. 202642
+			// Label with year suffix to disambiguate across year boundary (e.g. 42/25)
+			$weeklabel = date('W', $tmpend).'/'.date('y', $tmpend);
+			if ($year == -1) {
+				$weekkey = substr($weekkey, -2);
+				$weeklabel = date('W', $tmpend);
+			}
+
+			$result[$j] = array($weeklabel, isset($tab[$weekkey]) ? $tab[$weekkey] : 0);
+
+			$tmpend = dol_time_plus_duree($tmpend, -7, 'd');
+		}
+
+		return array_reverse($result);
 	}
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps

@@ -451,7 +451,7 @@ if ($result || !($id > 0)) {
 	if (isModEnabled('stock')) {
 		$langs->load("stocks");
 		$graphfiles['stock'] = array('modulepart' => 'productstats_stock',
-			'file' => $object->id.'/stock12m'.((string) $type != '' ? '_type'.$type : '').'_'.$mode.($search_year > 0 ? '_year'.$search_year : '').'.png',
+			'file' => $object->id.'/stock52w'.((string) $type != '' ? '_type'.$type : '').'_'.$mode.'.png',
 			'label' => $langs->transnoentitiesnoconv($arrayforlabel[$mode], $langs->transnoentitiesnoconv("StockMovements")));
 	}
 
@@ -518,9 +518,9 @@ if ($result || !($id > 0)) {
 					$px->SetMaxValue($px->GetCeilMaxValue() < 0 ? 0 : $px->GetCeilMaxValue());
 					$px->SetMinValue($px->GetFloorMinValue() > 0 ? 0 : $px->GetFloorMinValue());
 					$px->setShowLegend(0);
-					$px->SetWidth($WIDTH);
+					$px->SetWidth($key == 'stock' ? max((int) $WIDTH, 760) : $WIDTH);
 					$px->SetHeight($HEIGHT);
-					$px->SetHorizTickIncrement(1);
+					$px->SetHorizTickIncrement($key == 'stock' ? 4 : 1);
 					$px->SetShading(3);
 					//print 'x '.$key.' '.$graphfiles[$key]['file'];
 
