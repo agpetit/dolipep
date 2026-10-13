@@ -453,6 +453,10 @@ if ($result || !($id > 0)) {
 		$graphfiles['stock'] = array('modulepart' => 'productstats_stock',
 			'file' => $object->id.'/stock52w'.((string) $type != '' ? '_type'.$type : '').'_'.$mode.'.png',
 			'label' => $langs->transnoentitiesnoconv($arrayforlabel[$mode], $langs->transnoentitiesnoconv("StockMovements")));
+		
+		$graphfiles['stocktotal'] = array('modulepart' => 'productstats_stock',
+			'file' => $object->id.'/stocktotal52w'.((string) $type != '' ? '_type'.$type : '').'_'.$mode.'.png',
+			'label' => $langs->transnoentitiesnoconv("TotalStock"));
 	}
 
 	$px = new DolGraph();
@@ -508,6 +512,9 @@ if ($result || !($id > 0)) {
 					if ($key == 'stock') {
 						$graph_data = $object->get_nb_stockmovement($socid, $mode, ((string) $type != '' ? $type : -1), $search_year, $morefilters);
 					}
+					if ($key == 'stocktotal') {
+						$graph_data = $object->get_stock_total($socid, $mode, ((string) $type != '' ? $type : -1), $search_year, $morefilters);
+					}
 
 					// TODO Save cachefile $graphfiles[$key]['file']
 				}
@@ -518,9 +525,9 @@ if ($result || !($id > 0)) {
 					$px->SetMaxValue($px->GetCeilMaxValue() < 0 ? 0 : $px->GetCeilMaxValue());
 					$px->SetMinValue($px->GetFloorMinValue() > 0 ? 0 : $px->GetFloorMinValue());
 					$px->setShowLegend(0);
-					$px->SetWidth($key == 'stock' ? max((int) $WIDTH, 760) : $WIDTH);
+					$px->SetWidth((($key == 'stock') || ($key == 'stocktotal')) ? max((int) $WIDTH, 760) : $WIDTH);
 					$px->SetHeight($HEIGHT);
-					$px->SetHorizTickIncrement($key == 'stock' ? 4 : 1);
+					$px->SetHorizTickIncrement((($key == 'stock') || ($key == 'stocktotal')) ? 4 : 1);
 					$px->SetShading(3);
 					//print 'x '.$key.' '.$graphfiles[$key]['file'];
 
@@ -545,7 +552,14 @@ if ($result || !($id > 0)) {
 			if (!$graphfiles[$key]['file']) {  // @phpstan-ignore-line booleanNot.alwaysFalse
 				continue;
 			}
+			
 
+			if ($key == 'stock' && !$user->hasRight('stock', 'mouvement', 'lire')) {
+				continue;
+			}
+			if ($key == 'stocktotal' && !$user->hasRight('stock', 'mouvement', 'lire')) {
+				continue;
+			}
 			if ($key == 'propal' && !$user->hasRight('propal', 'lire')) {
 				continue;
 			}
@@ -565,9 +579,6 @@ if ($result || !($id > 0)) {
 				continue;
 			}
 			if ($key == 'mrp' && !$user->hasRight('mrp', 'read')) {
-				continue;
-			}
-			if ($key == 'stock' && !$user->hasRight('stock', 'mouvement', 'lire')) {
 				continue;
 			}
 

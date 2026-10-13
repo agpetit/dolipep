@@ -5152,6 +5152,127 @@ class Product extends CommonObject
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
+	 *  Return total stock quantity for the product by week (absolute stock level at end of each week)
+	 *
+	 * @param	int		$socid					Unused, kept for signature consistency with other get_nb_* methods
+	 * @param	string	$mode					Unused, kept for signature consistency (stock is always a quantity)
+	 * @param	int		$filteronproducttype	0=To filter on product only, 1=To filter on services only
+	 * @param	int		$year					Unused for the window (always last 52 weeks); -1=aggregate by week number only
+	 * @param	string	$morefilter				More sql filters (must use alias d.fk_product)
+	 * @return	array<int<0,51>,array<int,int|float>>|int<-1,-1>	Return integer <0 if KO, result[week]=array(label,value) for 52 weeks
+	 */
+	public function get_stock_total($socid, $mode, $filteronproducttype = -1, $year = 0, $morefilter = '')
+	{
+		// phpcs:enable
+		// Get all stock movements for the product, ordered by date descending (newest first)
+		// We will start from current stock and go backwards in time
+		$sql = "SELECT d.rowid, d.value, d.datem, d.fk_entrepot";
+		$sql .= " FROM ".$this->db->prefix()."stock_mouvement as d";
+		$sql .= ", ".$this->db->prefix()."entrepot as e";
+		if ($filteronproducttype >= 0) {
+			$sql .= ", ".$this->db->prefix()."product as p";
+		}
+		$sql .= " WHERE d.fk_entrepot = e.rowid";
+		$sql .= " AND e.entity IN (".getEntity('stock').")";
+		if ($this->id > 0) {
+			$sql .= " AND d.fk_product = ".((int) $this->id);
+		} else {
+			$sql .= " AND d.fk_product > 0";
+		}
+		if ($filteronproducttype >= 0) {
+			$sql .= " AND p.rowid = d.fk_product AND p.fk_product_type = ".((int) $filteronproducttype);
+		}
+		$sql .= $morefilter;
+		// Order by date descending to process from newest to oldest
+		$sql .= " ORDER BY d.datem DESC, d.rowid DESC";
+
+		$movements = array();
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			$num = $this->db->num_rows($resql);
+			$i = 0;
+			while ($i < $num) {
+				$arr = $this->db->fetch_array($resql);
+				if (is_array($arr)) {
+					$movements[] = array(
+						'rowid' => $arr[0],
+						'value' => $arr[1],
+						'datem' => $arr[2],
+						'fk_entrepot' => $arr[3]
+					);
+				}
+				$i++;
+			}
+		} else {
+			$this->error = $this->db->error().' sql='.$sql;
+			return -1;
+		}
+
+		// Start from current stock and go backwards in time
+		$currentStock = $this->stock_reel;
+		
+		// Group movements by week for efficient processing
+		$movementsByWeek = array();
+		foreach ($movements as $mov) {
+			$weekkey = date('oW', $mov['datem']);
+			if (!isset($movementsByWeek[$weekkey])) {
+				$movementsByWeek[$weekkey] = 0;
+			}
+			$movementsByWeek[$weekkey] += $mov['value'];
+		}
+		
+		// Calculate stock at the end of each week going backwards from now
+		// Start with current stock (end of current week)
+		$tmpend = dol_now();
+		$nbweeks = 52;
+		
+		$result = array();
+		$stockByWeek = array();
+		
+		// Process each week from now going back 52 weeks
+		for ($j = 0; $j < $nbweeks; $j++) {
+			$weekkey = date('oW', $tmpend);
+			$weeklabel = date('W', $tmpend).'/'.date('y', $tmpend);
+			
+			if ($year == -1) {
+				$weekkey = substr($weekkey, -2);
+				$weeklabel = date('W', $tmpend);
+			}
+
+			// Store current stock for this week (end of week)
+			$stockByWeek[$weekkey] = $currentStock;
+			
+			// Subtract movements from this week to get stock at end of previous week
+			if (isset($movementsByWeek[$weekkey])) {
+				$currentStock -= $movementsByWeek[$weekkey];
+			}
+
+			$tmpend = dol_time_plus_duree($tmpend, -7, 'd');
+		}
+		
+		// Build result array in chronological order (oldest week first)
+		// We already have data in $stockByWeek, but we need to output in order
+		$tmpend = dol_now();
+		for ($j = 0; $j < $nbweeks; $j++) {
+			$weekkey = date('oW', $tmpend);
+			$weeklabel = date('W', $tmpend).'/'.date('y', $tmpend);
+			
+			if ($year == -1) {
+				$weekkey = substr($weekkey, -2);
+				$weeklabel = date('W', $tmpend);
+			}
+
+			// Get stock at end of this week
+			$result[$j] = array($weeklabel, isset($stockByWeek[$weekkey]) ? $stockByWeek[$weekkey] : $currentStock);
+
+			$tmpend = dol_time_plus_duree($tmpend, -7, 'd');
+		}
+
+		return array_reverse($result);
+	}
+
+	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
+	/**
 	 *  Link a product/service to a parent product/service
 	 *
 	 * @param  int $id_pere Id of parent product/service
